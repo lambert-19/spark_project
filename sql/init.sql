@@ -119,3 +119,23 @@ CREATE TABLE IF NOT EXISTS toot_sentiment (
     model_name   TEXT,
     scored_at    TIMESTAMPTZ DEFAULT now()
 );
+
+-- ============================================================ Mesures d'optimisation (batch)
+
+-- Une ligne par exécution de batch/batch_job.py : durée de chaque étape selon le scénario
+-- (baseline, cache, repartition, optimized). app_id permet de retrouver l'exécution dans le
+-- Spark History Server (http://localhost:18080).
+CREATE TABLE IF NOT EXISTS batch_benchmarks (
+    run_id            BIGSERIAL PRIMARY KEY,
+    run_at            TIMESTAMPTZ DEFAULT now(),
+    scenario          TEXT NOT NULL,
+    app_id            TEXT,
+    data_until        TIMESTAMPTZ,            -- BATCH_UNTIL : volume figé pendant les mesures
+    toot_count        BIGINT,
+    load_s            DOUBLE PRECISION,       -- lecture JDBC (+ matérialisation du cache)
+    active_users_s    DOUBLE PRECISION,
+    hashtag_daily_s   DOUBLE PRECISION,
+    hashtag_totals_s  DOUBLE PRECISION,
+    daily_stats_s     DOUBLE PRECISION,
+    total_s           DOUBLE PRECISION
+);

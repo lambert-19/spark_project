@@ -98,6 +98,36 @@ docker compose exec postgres psql -U mastodon -d mastodon -f /dev/stdin < sql/de
 docker compose exec jupyter spark-submit /home/jovyan/work/batch/batch_job.py
 ```
 
+### Optimisation
+
+L'option `--scenario` active les optimisations une par une, pour mesurer leur effet :
+
+| Scénario | Optimisation |
+|---|---|
+| `baseline` | Aucune : chacune des 4 sorties relit PostgreSQL et recalcule tout le plan |
+| `cache` | `toots` et `toot_hashtags` lus une seule fois puis gardés en mémoire (`persist`) |
+| `repartition` | Les deux tables sont repartitionnées sur `toot_id` (4 partitions, et `spark.sql.shuffle.partitions = 4` au lieu de 200) : les jointures n'ajoutent plus de shuffle ; `coalesce(1)` avant l'écriture des résultats |
+| `optimized` | `cache` + `repartition` (scénario par défaut) |
+
+```bash
+batch/benchmark.sh 3    # chaque scénario 3 fois, sur les mêmes données ; médianes affichées à la fin
+```
+
+Chaque exécution ajoute une ligne (durée de chaque étape, `app_id`) dans la table `batch_benchmarks` et apparaît dans le Spark History Server (http://localhost:18080), sous le nom `mastodon-batch-job [scénario]`.
+
+Résultats du 09/10/2026 (12 079 toots, médiane de 3 exécutions, en secondes) :
+
+| Scénario | Lecture | active_users | hashtag_daily | hashtag_totals | daily_stats | Calculs (hors lecture) | **Total** |
+|---|---|---|---|---|---|---|---|
+| `baseline` | 2.3 | 13.1 | 3.6 | 3.5 | 4.4 | 27.0 | **29.0** |
+| `cache` | 7.5 | 7.5 | 2.0 | 2.5 | 1.6 | 13.8 | **21.3** |
+| `repartition` | 2.4 | 12.1 | 2.2 | 2.3 | 2.0 | 18.6 | **21.0** |
+| `optimized` | 7.3 | 7.5 | 1.9 | 2.0 | 1.5 | 13.4 | **20.8** |
+
+- **cache** : la lecture coûte plus cher (matérialisation du cache), mais les 4 sorties ne relisent plus PostgreSQL : temps de calcul divisé par 2.
+- **repartition** : 4 partitions de shuffle au lieu de 200 et jointures sans redistribution ; gain surtout sur les petites sorties (hashtag_daily, daily_stats).
+- Le volume est petit : une part importante du temps est un coût fixe (démarrage des tâches, connexions JDBC, première exécution de `active_users`), ce qui limite le gain total à environ 28 %.
+
 > Base créée avant l'ajout de ces tables : appliquer le schéma (idempotent, `IF NOT EXISTS`) avec
 > `docker compose exec -T postgres psql -U mastodon -d mastodon -f /dev/stdin < sql/init.sql`.
 

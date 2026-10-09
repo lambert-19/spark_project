@@ -51,7 +51,7 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Group by jour × hashtag avec rang dans la journée (`batch_hashtag_daily`), totaux par hashtag (`batch_hashtag_totals`), hashtag le plus fréquent global et par jour
 - [x] Toots par jour, longueur moyenne, engagement moyen (favs + reblogs), hashtag du jour → `batch_daily_stats`
 - [x] Constat : un compte relais (`hackaday@www.urbanmind.net`) publie ~15 % des toots avec toujours les mêmes hashtags (#engineering, #community, #inclusive…) → à signaler dans l'analyse
-- [ ] Optimisation : mesures **avant/après** `repartition`, `coalesce`, `cache`/`persist`
+- [x] Optimisation : mesures **avant/après** `repartition`, `coalesce`, `cache`/`persist` (`--scenario`, `batch/benchmark.sh`, table `batch_benchmarks`) : 29,0 s → 20,8 s (calculs 27,0 s → 13,4 s), cf. README
 - [ ] Captures Spark UI (jobs, stages, DAG, storage) + tableau comparatif des temps
 
 ## Phase 5 — Sentiment analysis (Spark MLlib)
