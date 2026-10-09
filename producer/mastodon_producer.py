@@ -8,14 +8,18 @@ Récupère les toots contenant les hashtags suivis et les publie en JSON dans le
            de rattrapage par l'API REST récupère les toots publiés pendant la coupure ;
 - poll   : interrogation périodique de /timelines/tag (fonctionne sans token).
 
-Pourquoi pas `Mastodon.stream_hashtag()` ? Il utilise le streaming HTTP (Server-Sent Events),
-que mastodon.social coupe au bout de ~16 s : on perdait des toots à chaque reconnexion.
+Pourquoi ne pas utiliser Mastodon.py ?
+- son streaming (`stream_hashtag`) passe par HTTP/Server-Sent Events, que mastodon.social coupe
+  au bout de ~16 s : on perdait des toots à chaque reconnexion ;
+- depuis la version 2, il convertit chaque réponse REST en objets typés : ~20 s pour une page
+  de 40 toots, ce qui rendait le backfill de dizaines de hashtags interminable.
+On appelle donc directement l'API REST (requests) et le WebSocket (websockets).
 
 `--backfill-pages N` récupère en plus, au démarrage, les N dernières pages (40 toots chacune)
 de chaque hashtag : utile pour constituer rapidement des données historiques (partie 3).
 
-Les limites de l'API (300 requêtes / 5 min) sont respectées automatiquement par Mastodon.py
-(ratelimit_method="pace").
+Les limites de l'API (300 requêtes / 5 min) sont respectées en lisant les en-têtes
+X-RateLimit-* de chaque réponse (cf. MastodonClient).
 
 Exemples :
     uv run producer/mastodon_producer.py                          # mode auto
@@ -32,19 +36,59 @@ import signal
 import threading
 import time
 from collections import OrderedDict
+from datetime import datetime
+from urllib.parse import quote
 
 import requests
 import websockets
 from dotenv import load_dotenv
 from kafka import KafkaProducer
 from kafka.errors import KafkaTimeoutError
-from mastodon import Mastodon, MastodonError
 from toot_parser import parse_status
 
 log = logging.getLogger("producer")
 
 PAGE_SIZE = 40  # maximum autorisé par l'API pour /timelines/tag
 USER_AGENT = "mastodon-spark-student-project/0.1"
+
+
+class MastodonClient:
+    """Client REST minimal pour /api/v1/timelines/tag, avec gestion de la limite de débit."""
+
+    def __init__(self, base_url: str, token: str | None):
+        self.base_url = base_url.rstrip("/")
+        self.session = requests.Session()
+        self.session.headers["User-Agent"] = USER_AGENT
+        if token:
+            self.session.headers["Authorization"] = f"Bearer {token}"
+        self.remaining: int | None = None
+        self.reset_at: float = 0.0
+
+    def timeline_hashtag(self, tag: str, max_id=None, min_id=None, limit: int = PAGE_SIZE) -> list[dict]:
+        params = {k: v for k, v in {"limit": limit, "max_id": max_id, "min_id": min_id}.items() if v is not None}
+        url = f"{self.base_url}/api/v1/timelines/tag/{quote(tag)}"
+        while True:
+            self._wait_if_exhausted()
+            response = self.session.get(url, params=params, timeout=30)
+            self._update_limits(response)
+            if response.status_code == 429:  # limite atteinte malgré tout : on attend la réinitialisation
+                self.remaining = 0
+                continue
+            response.raise_for_status()
+            return response.json()
+
+    def _update_limits(self, response: requests.Response) -> None:
+        if "X-RateLimit-Remaining" in response.headers:
+            self.remaining = int(response.headers["X-RateLimit-Remaining"])
+            self.reset_at = datetime.fromisoformat(response.headers["X-RateLimit-Reset"]).timestamp()
+
+    def _wait_if_exhausted(self, reserve: int = 5) -> None:
+        """Garde une petite réserve de requêtes ; sinon attend la fin de la fenêtre de 5 min."""
+        if self.remaining is not None and self.remaining <= reserve:
+            delay = min(max(self.reset_at - time.time(), 0) + 1, 300)
+            log.warning("Limite d'API presque atteinte, pause de %.0f s", delay)
+            time.sleep(delay)
+            self.remaining = None
 
 
 class RecentIds:
@@ -113,7 +157,7 @@ def _max_id(statuses) -> int:
     return max(int(s["id"]) for s in statuses)
 
 
-def backfill(api: Mastodon, sink: TootSink, tags: list[str], pages: int, stop: threading.Event) -> dict[str, int | None]:
+def backfill(api: MastodonClient, sink: TootSink, tags: list[str], pages: int, stop: threading.Event) -> dict[str, int | None]:
     """Remonte l'historique de chaque hashtag (pagination vers le passé avec max_id).
 
     Renvoie, pour chaque hashtag, l'id du toot le plus récent vu : point de départ du polling.
@@ -126,7 +170,7 @@ def backfill(api: Mastodon, sink: TootSink, tags: list[str], pages: int, stop: t
                 break
             try:
                 page = api.timeline_hashtag(tag, max_id=max_id, limit=PAGE_SIZE)
-            except MastodonError as exc:
+            except requests.RequestException as exc:
                 log.error("Backfill #%s interrompu : %s", tag, exc)
                 break
             if not page:
@@ -140,7 +184,7 @@ def backfill(api: Mastodon, sink: TootSink, tags: list[str], pages: int, stop: t
     return newest
 
 
-def fetch_new(api: Mastodon, tag: str, last_id: int | None, max_pages: int = 10) -> tuple[list, int | None]:
+def fetch_new(api: MastodonClient, tag: str, last_id: int | None, max_pages: int = 10) -> tuple[list, int | None]:
     """Toots publiés après last_id, du plus ancien au plus récent.
 
     `min_id` pagine vers l'avant : contrairement à `since_id`, on ne perd pas de toots
@@ -164,7 +208,7 @@ def poll_once(api, sink, tags, last_ids) -> int:
     for tag in tags:
         try:
             statuses, last_ids[tag] = fetch_new(api, tag, last_ids.get(tag))
-        except MastodonError as exc:
+        except requests.RequestException as exc:
             log.error("Polling #%s : %s", tag, exc)
             continue
         sent = sum(sink.send(s, tag) for s in statuses)
@@ -240,7 +284,7 @@ def handle_stream_event(message: dict, sink: TootSink, last_ids: dict) -> None:
 
 
 def run_streaming(api, sink, tags, last_ids, token, stop: threading.Event):
-    url = streaming_url(api.api_base_url)
+    url = streaming_url(api.base_url)
     log.info("Mode streaming : %s", ", ".join(f"#{t}" for t in tags))
     asyncio.run(stream_websocket(api, sink, tags, last_ids, url, token, stop))
 
@@ -272,13 +316,7 @@ def main():
     if mode == "stream" and not token:
         raise SystemExit("Le mode stream nécessite MASTODON_ACCESS_TOKEN (voir .env.example)")
 
-    api = Mastodon(
-        api_base_url=os.environ.get("MASTODON_API_BASE_URL", "https://mastodon.social"),
-        access_token=token,
-        ratelimit_method="pace",  # espace les requêtes pour ne jamais dépasser la limite
-        request_timeout=30,
-        user_agent=USER_AGENT,
-    )
+    api = MastodonClient(os.environ.get("MASTODON_API_BASE_URL", "https://mastodon.social"), token)
     bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9094")
     topic = os.environ.get("KAFKA_TOPIC", "mastodon_stream")
     sink = TootSink(create_kafka_producer(bootstrap), topic)

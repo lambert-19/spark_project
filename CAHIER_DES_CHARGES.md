@@ -3,6 +3,7 @@
 | | |
 |---|---|
 | **Projet** | Pipeline Big Data temps réel + batch sur les toots Mastodon |
+| **Équipe** | 2 personnes |
 | **Version** | 1.0 |
 | **Statut** | Brouillon à valider par l'équipe |
 
@@ -34,7 +35,7 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 ```
  ┌──────────────┐   API / streaming   ┌───────────────┐   topic: mastodon_stream
  │ Mastodon API │ ──────────────────▶ │  Producer Py  │ ─────────────────────────┐
- └──────────────┘    (Mastodon.py)    └───────────────┘                          ▼
+ └──────────────┘ (REST + WebSocket)  └───────────────┘                          ▼
                                                                          ┌──────────────┐
                                                                          │    Kafka     │
                                                                          └──────┬───────┘
@@ -56,7 +57,7 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 
 | Composant | Choix | Justification |
 |---|---|---|
-| Collecte | Python 3.13 (géré par `uv`), `Mastodon.py`, `kafka-python` | Bibliothèque officielle recommandée |
+| Collecte | Python 3.13 (géré par `uv`), `requests` (API REST), `websockets` (streaming), `kafka-python` | Mastodon.py a été testé puis écarté : son streaming SSE est coupé toutes les ~16 s par mastodon.social et sa conversion typée des réponses prend ~20 s par page de 40 toots |
 | Messagerie | Apache Kafka 4.3 (mode KRaft) | Pas de Zookeeper → setup simplifié |
 | Traitement | Apache Spark 4.1.2 (PySpark), cluster standalone 1 master + 1 worker | Streaming + batch + MLlib dans un seul moteur ; même image (Python 3.13, Java 21) pour driver et executors |
 | Stockage | PostgreSQL 16 | Imposé par l'énoncé, accès JDBC |
@@ -68,7 +69,16 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 
 ### EF1 — Ingestion (Mastodon → Kafka)
 - EF1.1 Authentification OAuth via une application Mastodon enregistrée ; secrets dans `.env` (jamais commités).
-- EF1.2 Filtrage sur une liste configurable de hashtags/mots-clés (par défaut : `#DataScience`, `#AI`, `#MachineLearning`, `#Python`, `#BigData`).
+- EF1.2 Filtrage sur une liste configurable de hashtags (`MASTODON_HASHTAGS`). Objectif : **le maximum de hashtags utiles**, pour maximiser le volume de données. 80 hashtags tech/data ont été testés sur mastodon.social (09/10/2026) ; les **74** qui ont publié au moins un toot récemment sont retenus (~1 400 toots/h au total) :
+  - Sécurité : `cybersecurity`, `infosec`, `security`, `privacy`
+  - IA / ML : `ai`, `artificialintelligence`, `machinelearning`, `ml`, `deeplearning`, `llm`, `llms`, `genai`, `generativeai`, `chatgpt`, `openai`, `anthropic`, `claude`, `mistral`, `huggingface`, `nlp`, `computervision`, `aiethics`
+  - Data : `datascience`, `data`, `bigdata`, `dataengineering`, `analytics`, `statistics`, `dataviz`, `visualization`, `database`, `sql`, `postgresql`, `postgres`, `kafka`, `pandas`, `rstats`
+  - Développement : `python`, `javascript`, `typescript`, `rust`, `golang`, `java`, `programming`, `coding`, `software`, `softwareengineering`, `webdev`, `opensource`, `foss`, `linux`
+  - Cloud / DevOps : `cloud`, `aws`, `kubernetes`, `docker`, `devops`, `automation`, `iot`
+  - Tech et société : `tech`, `technology`, `google`, `apple`, `microsoft`, `startup`, `innovation`, `digital`, `internet`, `robotics`, `quantumcomputing`, `ethics`
+  - Sciences : `science`, `research`, `math`, `mathematics`
+
+  Les volumes sont très inégaux : `cybersecurity` et `infosec` représentent à eux seuls ~40 % du flux, ce qui est à prendre en compte dans l'interprétation (top hashtags, sentiment).
 - EF1.3 Deux modes : **streaming** (WebSocket Mastodon, une connexion pour tous les hashtags, rattrapage REST après chaque reconnexion ; nécessite un access token de portée `read:statuses`) et **polling** de secours (`timeline_hashtag` + pagination `min_id`, sans token), avec respect de la limite de 300 requêtes / 5 min. Option de **backfill** au démarrage pour constituer l'historique.
 - EF1.4 Chaque message Kafka est un JSON structuré :
 
@@ -148,16 +158,19 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 2. `README.md` : architecture, prérequis, installation, lancement, démo.
 3. Notebooks : batch + optimisation, ML, visualisations.
 4. Captures Spark UI et tableau comparatif des performances.
-5. Présentation (slides) + démo live du flux arrivant dans PostgreSQL.
+5. Présentation **en anglais** (slides + soutenance) : architecture, choix techniques, difficultés, résultats, et démo live du flux arrivant dans PostgreSQL.
 
 ## 8. Planning indicatif
 
-| Semaine | Lots |
-|---|---|
-| S1 | Phase 0 + 1 (environnement, Docker) + début ingestion |
-| S2 | Ingestion finalisée, lancement de la collecte continue, streaming Spark |
-| S3 | Batch + optimisation, entraînement du modèle de sentiment |
-| S4 | Scoring, visualisations, README, slides, répétition de la démo |
+L'équipe compte **2 personnes**. Répartition proposée (à valider) : chacun porte une partie du pipeline, et tous deux doivent pouvoir la présenter et la défendre.
+
+| Semaine | Personne A — pipeline temps réel et batch | Personne B — ML et restitution |
+|---|---|---|
+| S1 | Phase 0 + 1 (environnement, Docker), ingestion | Prise en main de Spark/MLlib, téléchargement et exploration de Sentiment140 |
+| S2 | Collecte continue, streaming Spark | Pipeline de sentiment (prétraitement, LogisticRegression vs NaiveBayes) |
+| S3 | Batch + optimisation (mesures Spark UI) | Évaluation du modèle, scoring des toots, table `toot_sentiment` |
+| S4 | README, schéma d'architecture, démo live | Visualisations, insights |
+| S4 (ensemble) | Slides en anglais, répétition de la soutenance | |
 
 > Lancer la collecte **le plus tôt possible** : le volume de données historiques dépend de la durée d'ingestion.
 
@@ -173,9 +186,3 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 | RAM insuffisante (Spark + Kafka + Postgres) | Crashs | Limiter la mémoire des executors, 1 seul worker |
 | Démo live qui échoue | Soutenance pénalisée | Vidéo de secours + données pré-chargées |
 
-## 10. Points à clarifier
-
-- **Langue de la soutenance** : l'énoncé mentionne le japonais (objectifs) **et** l'anglais (livrables) — à confirmer avec l'enseignant.
-- Valeur du seuil X pour les « utilisateurs actifs ».
-- Liste définitive des hashtags suivis.
-- Taille de l'équipe et répartition des lots.

@@ -9,8 +9,8 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Dépendances Python locales avec `uv` (`uv sync`)
 - [ ] Valider le cahier des charges avec l'équipe (répartition des rôles)
 - [x] Initialiser le dépôt Git + `.gitignore` (`.env`, `data/`, `checkpoints/`, `__pycache__/`, `.ipynb_checkpoints/`)
-- [ ] Créer l'arborescence du projet (cf. CDC §8)
-- [ ] Créer un compte Mastodon (ex. `mastodon.social`) et enregistrer une application → `client_id`, `client_secret`, `access_token`
+- [x] Créer l'arborescence du projet
+- [x] Créer un compte Mastodon (ex. `mastodon.social`) et enregistrer une application → `client_id`, `client_secret`, `access_token`
 - [x] Créer `.env.example` (instance, token, identifiants Postgres, hashtags suivis)
 - [x] Vérifier Docker Desktop (WSL2) : RAM ≥ 8 Go allouée
 
@@ -22,24 +22,26 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Test de fumée : Spark → Kafka (batch + streaming) → PostgreSQL (JDBC) sur le cluster
 
 ## Phase 2 — Ingestion (Mastodon → Kafka)
-- [ ] `producer/mastodon_producer.py` avec Mastodon.py + `kafka-python` (ou `confluent-kafka`)
-- [ ] Mode streaming : `stream_hashtag()` / `stream_public()` filtré sur les mots-clés
-- [ ] Mode secours : polling `timeline_hashtag()` avec `since_id` (respect 300 req / 5 min)
-- [ ] Parsing : `id`, `created_at`, `content` (HTML → texte brut), `account.id`, `account.acct`, `language`, `tags`, `favourites_count`, `reblogs_count`, `replies_count`, `location` (null — non fourni par Mastodon)
-- [ ] Sérialisation JSON, clé Kafka = `toot_id` (dédoublonnage)
-- [ ] Gestion des erreurs / reconnexion / logs
-- [ ] Vérifier la réception avec `kafka-console-consumer` ou Kafka UI
+- [x] `producer/mastodon_producer.py` avec `requests` + `websockets` + `kafka-python` (+ `toot_parser.py`, image Docker `producer`). Mastodon.py abandonné : streaming SSE coupé par mastodon.social, et conversion typée des réponses trop lente (~20 s par page de 40 toots)
+- [x] Liste de hashtags élargie : 74 hashtags tech/data (~1 400 toots/h), cf. CDC EF1.2
+- [x] Mode streaming : WebSocket Mastodon (une connexion, tous les hashtags) + rattrapage REST à chaque reconnexion. `stream_hashtag()` de Mastodon.py abandonné : mastodon.social coupe le streaming HTTP (SSE) toutes les ~16 s
+- [ ] Régénérer l'access token Mastodon (il a circulé en clair)
+- [x] Mode secours : polling `timeline_hashtag()` avec `min_id` (aucun toot perdu) + backfill historique ; limite 300 req / 5 min gérée par `ratelimit_method="pace"`
+- [x] Parsing : `id`, `created_at`, `content` (HTML → texte brut), `account.id`, `account.acct`, `language`, `tags`, `favourites_count`, `reblogs_count`, `replies_count`, `location` (null — non fourni par Mastodon)
+- [x] Sérialisation JSON, clé Kafka = `toot_id` (dédoublonnage côté producer ; à refaire côté Spark/Postgres)
+- [x] Gestion des erreurs / reconnexion / logs / arrêt propre (SIGTERM)
+- [x] Vérifier la réception avec `kafka-console-consumer` ou Kafka UI
 
 ## Phase 3 — Stream processing (Spark Structured Streaming)
-- [ ] `streaming/stream_job.py` : lecture Kafka → schéma explicite (`StructType`) → DataFrame
-- [ ] Nettoyage : suppression URLs/mentions, texte vide, doublons (`dropDuplicates` + watermark)
-- [ ] T1 : filtre par langue (`en` / `fr`) et/ou mots-clés
-- [ ] T2 : fenêtres temporelles (`window(created_at, "1 minute")` et `"1 hour"`) + watermark 10 min
-- [ ] A1 : nombre de toots par fenêtre
-- [ ] A2 : longueur moyenne des toots par utilisateur et par hashtag
-- [ ] Sink : `foreachBatch` → JDBC PostgreSQL (toots bruts + agrégats)
-- [ ] Checkpoints pour la reprise après crash
-- [ ] Démo : requête SQL qui montre les lignes qui arrivent en temps réel
+- [x] `streaming/stream_job.py` : lecture Kafka → schéma explicite (`StructType`) → DataFrame (service Docker `stream-job`)
+- [x] Nettoyage : suppression URLs/mentions, texte vide, doublons (`dropDuplicatesWithinWatermark` + upsert `ON CONFLICT`)
+- [x] T1 : filtre par langue (`STREAM_LANGUAGES`, défaut `en` = 84 % des toots) et mots-clés optionnels (`STREAM_KEYWORDS`), appliqué aux agrégats
+- [x] T2 : fenêtres temporelles (`window(created_at, "1 minute")` et `"1 hour"`) + watermark 1 h (toots fédérés en retard)
+- [x] A1 : nombre de toots par fenêtre (`stream_window_counts`)
+- [x] A2 : longueur moyenne des toots par utilisateur et par hashtag (`stream_user_stats`, `stream_hashtag_stats`)
+- [x] Sink : `foreachBatch` → JDBC staging → `INSERT … ON CONFLICT` (idempotent)
+- [x] Checkpoints pour la reprise après crash (testé : 2 redémarrages, compteurs exacts)
+- [x] Démo : `sql/demo.sql` (avec `\watch 5` dans psql)
 
 ## Phase 4 — Batch processing (PostgreSQL → Spark)
 - [ ] Laisser tourner l'ingestion plusieurs jours (objectif ≥ 10 000 toots)
@@ -75,5 +77,5 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [ ] Schéma d'architecture (image)
 - [ ] Slides de présentation (architecture, choix, difficultés, résultats, démo)
 - [ ] Répétition de la démo live (plan B : vidéo enregistrée)
-- [ ] Clarifier la langue de soutenance (énoncé : japonais **et** anglais — à confirmer)
+- [x] Langue de soutenance : **anglais** (slides et présentation orale)
 - [ ] Dernière vérif : clone propre → `docker compose up` → tout fonctionne
