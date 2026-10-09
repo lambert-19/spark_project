@@ -162,6 +162,16 @@ Résultats (1 280 507 tweets d'entraînement, 319 493 de test) :
 
 Marge neutre retenue : 0,20 (neutre si 0,30 ≤ p(positif) ≤ 0,70), exactitude sur 3 classes du jeu manuel : 57,4 %.
 
+### Application aux toots
+
+[ml/score_toots.py](ml/score_toots.py) note les toots en anglais (le modèle a appris sur des tweets anglais) et recalcule entièrement la table `toot_sentiment` (`positive` / `negative` / `neutral`, probabilité « positif », nom du modèle) :
+
+```bash
+docker compose exec jupyter spark-submit /home/jovyan/work/ml/score_toots.py
+```
+
+À relancer après un nouvel entraînement, ou une fois la collecte avancée.
+
 > **Mémoire** : si Docker Desktop dispose de 8 Go ou moins, l'exécuteur peut être tué (code 137) pendant l'entraînement. Mettre le streaming en pause le temps de l'entraînement (aucune perte : les toots attendent dans Kafka et le job reprend depuis son checkpoint) :
 > `docker compose stop stream-job kafka-ui`, entraînement, puis `docker compose start stream-job kafka-ui`.
 

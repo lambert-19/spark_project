@@ -62,8 +62,9 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [ ] (Bonus) `CrossValidator` / `ParamGridBuilder`
 - [x] Sauvegarde du `PipelineModel` (nettoyage compris) dans `models/sentiment/`
 - [x] Seuil neutre choisi sur le jeu annoté à la main (498 tweets dont 139 neutres) : neutre si |p(positif) − 0,5| ≤ 0,20
-- [ ] Application sur les toots historiques → positif / négatif / **neutre** (seuil de probabilité)
-- [ ] Écriture dans la table `toot_sentiment`
+- [x] Application sur les toots historiques en anglais (`ml/score_toots.py`) → positif / négatif / **neutre** (seuil de probabilité)
+- [x] Écriture dans la table `toot_sentiment` (09/10 : 9 280 toots, 54 % positifs, 25 % neutres, 21 % négatifs)
+- [x] Constat : biais de domaine (tweets perso 2009 vs toots tech) — vocabulaire technique « error », « missing », « vulnerability » tiré vers le négatif, alertes automatiques parfois positives → à présenter
 
 ## Phase 6 — Visualisation (Jupyter)
 - [ ] Distribution des sentiments (bar chart)
