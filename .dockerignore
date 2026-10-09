@@ -1,0 +1,12 @@
+# Contexte de build du producer (racine du projet) : on n'envoie que le nécessaire.
+.git
+.venv
+.env
+data
+models
+checkpoints
+spark-events
+notebooks
+docs
+**/__pycache__
+**/.ipynb_checkpoints

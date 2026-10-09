@@ -40,8 +40,9 @@ services:
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       # PLAINTEXT : trafic entre conteneurs ; EXTERNAL : producer lancé depuis l'hôte
+      # (127.0.0.1 et non localhost : kafka-python ne retente pas en IPv4 si ::1 échoue)
       KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://127.0.0.1:9094
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       # Un seul broker : facteurs de réplication à 1
@@ -77,6 +78,20 @@ services:
         --partitions 3 --replication-factor 1 &&
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
     restart: "no"
+
+  # Collecte continue Mastodon -> Kafka (voir producer/mastodon_producer.py)
+  producer:
+    build:
+      context: .
+      dockerfile: producer/Dockerfile
+    image: mastodon-producer:latest
+    env_file: .env
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
 
   kafka-ui:
     image: kafbat/kafka-ui:v1.4.2

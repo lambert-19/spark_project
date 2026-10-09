@@ -7,28 +7,34 @@ authors = [
     { name = "lambert-19", email = "ndawseri@gmail.com" }
 ]
 requires-python = ">=3.13"
+# Dépendances du producer Mastodon -> Kafka (seules installées dans son image Docker)
 dependencies = [
     "beautifulsoup4>=4.12",
     "kafka-python>=2.1",
     "mastodon-py>=2.0",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+    "websockets>=14",
+]
+
+[dependency-groups]
+# Analyse locale : autocomplétion Spark, requêtes PostgreSQL, graphiques.
+# pyspark doit rester aligné sur la version Spark des conteneurs.
+analysis = [
     "matplotlib>=3.9",
     "pandas>=2.2",
     "psycopg2-binary>=2.9",
     "pyspark==4.1.2",
-    "python-dotenv>=1.0",
     "seaborn>=0.13",
     "sqlalchemy>=2.0",
 ]
-
-[project.scripts]
-pyspark-project = "pyspark_project:main"
-
-[build-system]
-requires = ["uv_build>=0.12.19,<0.13.0"]
-build-backend = "uv_build"
-
-[dependency-groups]
 dev = [
     "ipykernel>=7.4.0",
     "ruff>=0.16.10",
 ]
+
+[tool.uv]
+# Projet applicatif (scripts), pas une bibliothèque à packager
+package = false
+# `uv sync` installe tout en local ; l'image du producer utilise --no-default-groups
+default-groups = ["analysis", "dev"]

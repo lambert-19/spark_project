@@ -11,7 +11,7 @@ wheels/
 
 # Secrets
 .env
-
+.gitkeep
 # Données, modèles et état Spark
 data/*
 !data/.gitkeep
