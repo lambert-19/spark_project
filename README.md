@@ -27,7 +27,7 @@ Le premier build télécharge l'image Spark/Jupyter (~4 Go).
 | Spark UI | http://localhost:4040 | Application en cours |
 | Spark History | http://localhost:18080 | Applications terminées (comparaison des optimisations) |
 | Kafka UI | http://localhost:8082 | Topics et messages |
-| Kafka | `localhost:9094` (hôte) · `kafka:9092` (conteneurs) | Topic `mastodon_stream` |
+| Kafka | `127.0.0.1:9094` (hôte) · `kafka:9092` (conteneurs) | Topic `mastodon_stream` |
 | PostgreSQL | `localhost:5433` (hôte) · `postgres:5432` (conteneurs) | Base `mastodon` |
 
 ## Architecture Docker
@@ -36,6 +36,20 @@ Le premier build télécharge l'image Spark/Jupyter (~4 Go).
 - Le dossier du projet est monté sur `/home/jovyan/work` dans tous les conteneurs Spark, pour que driver et executors voient les mêmes chemins (datasets, modèles, checkpoints).
 - Chaque application Spark est limitée à 2 cœurs ([spark-defaults.conf](docker/spark/spark-defaults.conf)) : le job de streaming et un notebook peuvent tourner en même temps.
 - Le schéma PostgreSQL ([sql/init.sql](sql/init.sql)) n'est appliqué qu'au **premier** démarrage. Pour le réappliquer : `docker compose down -v` (⚠ supprime les données).
+
+## Collecte des toots (producer)
+
+Le service `producer` démarre avec la stack et publie les toots dans le topic `mastodon_stream`.
+
+- **Sans token** : mode polling (interrogation toutes les `PRODUCER_POLL_INTERVAL` secondes).
+- **Avec `MASTODON_ACCESS_TOKEN`** dans `.env` : mode streaming temps réel par WebSocket. Créer une application dans *Préférences → Développement → Nouvelle application* (portée `read:statuses` uniquement), copier « Your access token » dans `.env`, puis `docker compose up -d --force-recreate producer`.
+- Au démarrage, `PRODUCER_BACKFILL_PAGES` pages d'historique (40 toots) sont récupérées par hashtag.
+
+```bash
+docker compose logs -f producer                                  # suivre la collecte
+docker compose stop producer                                     # arrêter la collecte
+uv run producer/mastodon_producer.py --mode poll --duration 60   # lancement local (test)
+```
 
 ## Lancer un job Spark
 
