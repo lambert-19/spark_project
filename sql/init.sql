@@ -65,12 +65,46 @@ CREATE TABLE IF NOT EXISTS stream_hashtag_stats (
 );
 
 -- ============================================================ Résultats batch
+-- Recalculés entièrement à chaque exécution de batch/batch_job.py (tables vidées puis remplies).
 
 CREATE TABLE IF NOT EXISTS batch_daily_stats (
     day             DATE PRIMARY KEY,
     toot_count      BIGINT NOT NULL,
     avg_length      DOUBLE PRECISION,
     avg_engagement  DOUBLE PRECISION,     -- favourites + reblogs
+    top_hashtag     TEXT,
+    computed_at     TIMESTAMPTZ DEFAULT now()
+);
+
+-- Nombre de toots par jour et par hashtag ; rank = 1 pour le hashtag le plus fréquent du jour.
+CREATE TABLE IF NOT EXISTS batch_hashtag_daily (
+    day          DATE NOT NULL,
+    hashtag      TEXT NOT NULL,
+    toot_count   BIGINT NOT NULL,
+    rank         INTEGER NOT NULL,
+    computed_at  TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (day, hashtag)
+);
+
+-- Totaux par hashtag sur tout l'historique (top hashtags global).
+CREATE TABLE IF NOT EXISTS batch_hashtag_totals (
+    hashtag         TEXT PRIMARY KEY,
+    toot_count      BIGINT NOT NULL,
+    user_count      BIGINT NOT NULL,
+    avg_length      DOUBLE PRECISION,
+    avg_engagement  DOUBLE PRECISION,
+    computed_at     TIMESTAMPTZ DEFAULT now()
+);
+
+-- Utilisateurs actifs : plus de BATCH_ACTIVE_THRESHOLD toots dans l'historique.
+CREATE TABLE IF NOT EXISTS batch_active_users (
+    user_id         TEXT PRIMARY KEY,
+    username        TEXT,
+    toot_count      BIGINT NOT NULL,
+    avg_length      DOUBLE PRECISION,
+    avg_engagement  DOUBLE PRECISION,
+    first_toot      TIMESTAMPTZ,
+    last_toot       TIMESTAMPTZ,
     top_hashtag     TEXT,
     computed_at     TIMESTAMPTZ DEFAULT now()
 );

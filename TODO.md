@@ -46,10 +46,11 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 ## Phase 4 — Batch processing (PostgreSQL → Spark)
 - [ ] Laisser tourner l'ingestion plusieurs jours (objectif ≥ 10 000 toots)
 - [ ] (Optionnel) Compléter avec un dataset Kaggle Twitter
-- [ ] `batch/batch_job.py` (ou notebook) : lecture JDBC partitionnée
-- [ ] Filtre utilisateurs actifs (> X toots)
-- [ ] Group by jour × hashtag, total, hashtag le plus fréquent
-- [ ] Toots par jour, longueur moyenne, engagement moyen (favs + reblogs)
+- [x] `batch/batch_job.py` : lecture JDBC partitionnée (4 partitions sur un hash de `toot_id`, colonnes utiles uniquement)
+- [x] Filtre utilisateurs actifs (> `BATCH_ACTIVE_THRESHOLD` toots, défaut 5) → `batch_active_users` (+ hashtag favori)
+- [x] Group by jour × hashtag avec rang dans la journée (`batch_hashtag_daily`), totaux par hashtag (`batch_hashtag_totals`), hashtag le plus fréquent global et par jour
+- [x] Toots par jour, longueur moyenne, engagement moyen (favs + reblogs), hashtag du jour → `batch_daily_stats`
+- [x] Constat : un compte relais (`hackaday@www.urbanmind.net`) publie ~15 % des toots avec toujours les mêmes hashtags (#engineering, #community, #inclusive…) → à signaler dans l'analyse
 - [ ] Optimisation : mesures **avant/après** `repartition`, `coalesce`, `cache`/`persist`
 - [ ] Captures Spark UI (jobs, stages, DAG, storage) + tableau comparatif des temps
 

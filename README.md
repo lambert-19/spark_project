@@ -83,6 +83,24 @@ docker compose exec postgres psql -U mastodon -d mastodon -f /dev/stdin < sql/de
 
 > Changer les requêtes (agrégations, `spark.sql.shuffle.partitions`) rend les checkpoints incompatibles : arrêter le job et supprimer `checkpoints/stream_job/` avant de relancer.
 
+## Job batch (PostgreSQL → Spark → PostgreSQL)
+
+[batch/batch_job.py](batch/batch_job.py) analyse tout l'historique des tables `toots` et `toot_hashtags` (lecture JDBC partitionnée) et recalcule entièrement les tables de résultats à chaque exécution :
+
+| Table | Contenu |
+|---|---|
+| `batch_active_users` | Utilisateurs actifs (plus de `BATCH_ACTIVE_THRESHOLD` toots, défaut 5) : volume, longueur et engagement moyens, hashtag favori |
+| `batch_hashtag_daily` | Toots par jour et par hashtag ; `rank = 1` pour le hashtag le plus fréquent du jour |
+| `batch_hashtag_totals` | Totaux par hashtag sur tout l'historique |
+| `batch_daily_stats` | Toots par jour, longueur moyenne, engagement moyen (favourites + reblogs), hashtag du jour |
+
+```bash
+docker compose exec jupyter spark-submit /home/jovyan/work/batch/batch_job.py
+```
+
+> Base créée avant l'ajout de ces tables : appliquer le schéma (idempotent, `IF NOT EXISTS`) avec
+> `docker compose exec -T postgres psql -U mastodon -d mastodon -f /dev/stdin < sql/init.sql`.
+
 ## Lancer un job Spark
 
 ```bash
