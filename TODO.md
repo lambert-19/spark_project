@@ -7,7 +7,7 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 
 ## Phase 0 — Cadrage & environnement
 - [x] Dépendances Python locales avec `uv` (`uv sync`)
-- [ ] Valider le cahier des charges avec l'équipe (répartition des rôles)
+- [x] Valider le cahier des charges avec l'équipe (répartition des rôles)
 - [x] Initialiser le dépôt Git + `.gitignore` (`.env`, `data/`, `checkpoints/`, `__pycache__/`, `.ipynb_checkpoints/`)
 - [x] Créer l'arborescence du projet
 - [x] Créer un compte Mastodon (ex. `mastodon.social`) et enregistrer une application → `client_id`, `client_secret`, `access_token`
