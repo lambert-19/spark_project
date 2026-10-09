@@ -76,9 +76,10 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Rédiger les insights sous chaque graphique
 
 ## Phase 7 — Livrables
-- [ ] `README.md` : architecture, prérequis, installation pas à pas, lancement, démo
-- [ ] Commentaires dans le code (docstrings + explication des étapes clés)
-- [ ] Schéma d'architecture (image)
+- [x] `README.md` : architecture, prérequis, installation pas à pas, lancement, démo
+- [x] Commentaires dans le code (docstrings + explication des étapes clés)
+- [x] Schéma d'architecture (diagramme Mermaid dans le README, rendu par GitHub)
+- [x] `sql/init.sql` testé sur une base vide (12 tables)
 - [ ] Slides de présentation (architecture, choix, difficultés, résultats, démo)
 - [ ] Répétition de la démo live (plan B : vidéo enregistrée)
 - [x] Langue de soutenance : **anglais** (slides et présentation orale)

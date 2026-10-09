@@ -4,22 +4,73 @@ Pipeline temps réel et batch sur les toots Mastodon : **Mastodon API → Kafka 
 
 Spécifications : [CAHIER_DES_CHARGES.md](CAHIER_DES_CHARGES.md) · Avancement : [TODO.md](TODO.md)
 
+## Architecture
+
+```mermaid
+flowchart LR
+    M[Mastodon API<br/>REST + WebSocket] --> P[producer<br/>Python]
+    P -->|JSON, clé = toot_id| K[(Kafka<br/>topic mastodon_stream)]
+    K --> S[stream-job<br/>Spark Structured Streaming]
+    S -->|foreachBatch → upsert| PG[(PostgreSQL)]
+    PG -->|JDBC partitionné| B[batch_job<br/>Spark batch]
+    B --> PG
+    S140[/Sentiment140<br/>1,6 M tweets/] --> T[train_sentiment<br/>Spark MLlib]
+    T --> MOD[/models/sentiment/]
+    MOD --> SC[score_toots<br/>Spark MLlib]
+    PG --> SC
+    SC --> PG
+    PG --> J[Jupyter<br/>visualisations]
+```
+
+| Partie de l'énoncé | Code | Tables PostgreSQL produites |
+|---|---|---|
+| 1. Ingestion Mastodon → Kafka | [producer/](producer/) | — (topic `mastodon_stream`) |
+| 2. Stream processing | [streaming/stream_job.py](streaming/stream_job.py) | `toots`, `toot_hashtags`, `stream_window_counts`, `stream_user_stats`, `stream_hashtag_stats` |
+| 3. Batch + optimisation | [batch/batch_job.py](batch/batch_job.py), [batch/benchmark.sh](batch/benchmark.sh) | `batch_daily_stats`, `batch_hashtag_daily`, `batch_hashtag_totals`, `batch_active_users`, `batch_benchmarks` |
+| 4. Sentiment (MLlib) | [ml/train_sentiment.py](ml/train_sentiment.py), [ml/score_toots.py](ml/score_toots.py) | `sentiment_model_metrics`, `toot_sentiment` |
+| 5. Visualisations | [notebooks/visualisations.ipynb](notebooks/visualisations.ipynb) | — (figures dans `notebooks/figures/`) |
+
+Le schéma complet est dans [sql/init.sql](sql/init.sql).
+
 ## Prérequis
 
 - Docker Desktop (≥ 8 Go de RAM alloués)
 - [uv](https://docs.astral.sh/uv/) pour l'environnement Python local (producer, autocomplétion)
 
-## Démarrage
+## Démarrage de bout en bout
 
 ```bash
-cp .env.example .env          # puis renseigner les identifiants Mastodon
+# 1. Infrastructure + collecte + streaming (démarrent automatiquement)
+cp .env.example .env          # optionnel : MASTODON_ACCESS_TOKEN pour le mode temps réel
 uv sync                       # dépendances Python locales
-docker compose up -d --build  # infrastructure
+docker compose up -d --build  # le premier build télécharge l'image Spark/Jupyter (~4 Go)
+
+# 2. Laisser la collecte tourner (le backfill récupère ~200 toots par hashtag au démarrage)
+docker compose logs -f producer
+
+# 3. Batch (partie 3)
+docker compose exec jupyter spark-submit /home/jovyan/work/batch/batch_job.py
+
+# 4. Sentiment (partie 4) : télécharger Sentiment140 (cf. plus bas), entraîner, puis noter les toots
+docker compose exec jupyter spark-submit /home/jovyan/work/ml/train_sentiment.py
+docker compose exec jupyter spark-submit /home/jovyan/work/ml/score_toots.py
+
+# 5. Visualisations (partie 5) : http://localhost:8888 → notebooks/visualisations.ipynb
 ```
 
-Le premier build télécharge l'image Spark/Jupyter (~4 Go).
+## Démo temps réel
 
-### Services et ports
+Montrer les toots qui arrivent dans PostgreSQL pendant la présentation, avec les requêtes de [sql/demo.sql](sql/demo.sql) (derniers toots reçus, toots par minute, hashtags de l'heure, volumes) rafraîchies toutes les 5 s :
+
+```bash
+while true; do clear; docker compose exec -T postgres psql -U mastodon -d mastodon < sql/demo.sql; sleep 5; done
+```
+
+Avec un client `psql` installé sur la machine : `psql -h localhost -p 5433 -U mastodon mastodon`, puis `\i sql/demo.sql` et `\watch 5`.
+
+En complément : Kafka UI (http://localhost:8082, messages du topic en direct) et le Spark UI du job de streaming (http://localhost:4042, onglet *Structured Streaming*). Pour un flux continu pendant la démo, renseigner `MASTODON_ACCESS_TOKEN` : en mode polling, la limite de l'API (300 requêtes / 5 min) impose des pauses.
+
+## Services et ports
 
 Tous les ports sont publiés sur `127.0.0.1` uniquement (pas d'accès depuis le réseau local). Entre conteneurs, on utilise le nom du service et le port interne.
 
