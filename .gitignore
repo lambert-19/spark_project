@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Secrets
+.env
+
+# Données, modèles et état Spark
+data/*
+!data/.gitkeep
+models/
+checkpoints/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Jupyter / IDE
+.ipynb_checkpoints/
+.vscode/
+
+# Event logs Spark (History Server)
+spark-events/*
+!spark-events/.gitkeep

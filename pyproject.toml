@@ -1,0 +1,34 @@
+[project]
+name = "pyspark-project"
+version = "0.1.0"
+description = "Pipeline temps réel et batch sur les toots Mastodon avec Kafka, Spark et PostgreSQL"
+readme = "README.md"
+authors = [
+    { name = "lambert-19", email = "ndawseri@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "kafka-python>=2.1",
+    "mastodon-py>=2.0",
+    "matplotlib>=3.9",
+    "pandas>=2.2",
+    "psycopg2-binary>=2.9",
+    "pyspark==4.1.2",
+    "python-dotenv>=1.0",
+    "seaborn>=0.13",
+    "sqlalchemy>=2.0",
+]
+
+[project.scripts]
+pyspark-project = "pyspark_project:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.4.0",
+    "ruff>=0.16.10",
+]

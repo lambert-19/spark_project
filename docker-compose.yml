@@ -1,0 +1,169 @@
+# Infrastructure du projet : Kafka -> Spark -> PostgreSQL, + Jupyter pour l'analyse.
+#
+#   cp .env.example .env
+#   docker compose up -d --build
+#
+# Ports publiés sur 127.0.0.1 uniquement : évite le relais IPv6 de Docker Desktop
+# (localhost -> ::1 -> connexion réinitialisée) et n'expose rien sur le réseau local.
+#
+# Interfaces web :
+#   Jupyter              http://localhost:8888   (token : JUPYTER_TOKEN)
+#   Spark Master UI      http://localhost:8080
+#   Spark Worker UI      http://localhost:8081
+#   Spark UI (driver)    http://localhost:4040   (pendant qu'une application tourne)
+#   Spark History        http://localhost:18080
+#   Kafka UI             http://localhost:8082
+
+x-spark-common: &spark-common
+  build: ./docker/spark
+  image: mastodon-spark:4.1.2
+  env_file: .env
+  environment:
+    POSTGRES_HOST: postgres
+    KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  volumes:
+    # Même chemin dans tous les conteneurs : le driver et les executors voient
+    # les mêmes fichiers (datasets, modèles sauvegardés, checkpoints).
+    - ./:/home/jovyan/work
+    - ./spark-events:/opt/spark-events
+
+services:
+  # ---------------------------------------------------------------- Kafka (KRaft)
+  kafka:
+    image: apache/kafka:4.3.1
+    hostname: kafka
+    ports:
+      - "127.0.0.1:9094:9094"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # PLAINTEXT : trafic entre conteneurs ; EXTERNAL : producer lancé depuis l'hôte
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Un seul broker : facteurs de réplication à 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # Création du topic au démarrage, puis le conteneur s'arrête
+  kafka-init:
+    image: apache/kafka:4.3.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    env_file: .env
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
+        --create --if-not-exists --topic $${KAFKA_TOPIC:-mastodon_stream}
+        --partitions 3 --replication-factor 1 &&
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
+    restart: "no"
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.4.2
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- PostgreSQL
+  postgres:
+    image: postgres:16.15-alpine
+    env_file: .env
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      # Exécuté uniquement au premier démarrage (volume vide)
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------- Spark standalone
+  spark-master:
+    <<: *spark-common
+    # Le healthcheck hérité de l'image vérifie le serveur Jupyter, absent ici
+    healthcheck:
+      disable: true
+    hostname: spark-master
+    command: ["/usr/local/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:7077:7077"
+    environment:
+      SPARK_DAEMON_MEMORY: 512m
+
+  spark-worker:
+    <<: *spark-common
+    # Le healthcheck hérité de l'image vérifie le serveur Jupyter, absent ici
+    healthcheck:
+      disable: true
+    hostname: spark-worker
+    command: ["/usr/local/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    depends_on:
+      - spark-master
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      POSTGRES_HOST: postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPARK_DAEMON_MEMORY: 512m
+      SPARK_WORKER_CORES: 4
+      SPARK_WORKER_MEMORY: 3g
+      SPARK_WORKER_DIR: /tmp/spark-work
+
+  spark-history:
+    <<: *spark-common
+    # Le healthcheck hérité de l'image vérifie le serveur Jupyter, absent ici
+    healthcheck:
+      disable: true
+    hostname: spark-history
+    command: ["/usr/local/spark/bin/spark-class", "org.apache.spark.deploy.history.HistoryServer"]
+    ports:
+      - "127.0.0.1:18080:18080"
+    environment:
+      SPARK_DAEMON_MEMORY: 512m
+
+  # ---------------------------------------------------------------- Jupyter (driver Spark)
+  jupyter:
+    <<: *spark-common
+    # Nom d'hôte fixe : les executors doivent pouvoir joindre le driver
+    hostname: jupyter
+    command: ["start-notebook.py", "--ServerApp.root_dir=/home/jovyan/work"]
+    ports:
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:4040-4041:4040-4041"
+    depends_on:
+      - spark-master
+      - postgres
+      - kafka
+
+volumes:
+  kafka-data:
+  pg-data:
