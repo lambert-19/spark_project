@@ -67,12 +67,13 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Constat : biais de domaine (tweets perso 2009 vs toots tech) — vocabulaire technique « error », « missing », « vulnerability » tiré vers le négatif, alertes automatiques parfois positives → à présenter
 
 ## Phase 6 — Visualisation (Jupyter)
-- [ ] Distribution des sentiments (bar chart)
-- [ ] Fréquence des toots dans le temps (line chart)
-- [ ] Top 15 hashtags (horizontal bar)
-- [ ] Heatmap activité (jour × heure)
-- [ ] (Bonus) sentiment par hashtag, évolution du sentiment dans le temps
-- [ ] Rédiger les insights sous chaque graphique
+- [x] Notebook `notebooks/visualisations.ipynb` (exécuté, figures PNG dans `notebooks/figures/` pour les slides)
+- [x] Distribution des sentiments (bar chart)
+- [x] Fréquence des toots dans le temps (line chart, avec la limite backfill / collecte)
+- [x] Top 15 hashtags (horizontal bar, hashtags dominés par un seul compte signalés)
+- [x] Heatmap activité (jour × heure)
+- [x] (Bonus) sentiment par hashtag, temps d'optimisation du batch, matrice de confusion du modèle
+- [x] Rédiger les insights sous chaque graphique
 
 ## Phase 7 — Livrables
 - [ ] `README.md` : architecture, prérequis, installation pas à pas, lancement, démo

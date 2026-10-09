@@ -175,6 +175,18 @@ docker compose exec jupyter spark-submit /home/jovyan/work/ml/score_toots.py
 > **Mémoire** : si Docker Desktop dispose de 8 Go ou moins, l'exécuteur peut être tué (code 137) pendant l'entraînement. Mettre le streaming en pause le temps de l'entraînement (aucune perte : les toots attendent dans Kafka et le job reprend depuis son checkpoint) :
 > `docker compose stop stream-job kafka-ui`, entraînement, puis `docker compose start stream-job kafka-ui`.
 
+## Visualisations (Jupyter)
+
+[notebooks/visualisations.ipynb](notebooks/visualisations.ipynb) lit les tables PostgreSQL et trace, avec un commentaire sous chaque graphique : la fréquence des toots dans le temps, une heatmap d'activité jour × heure, le top 15 des hashtags, la distribution des sentiments, le sentiment par hashtag, les temps d'optimisation du batch et la matrice de confusion du modèle. Les figures sont aussi enregistrées dans `notebooks/figures/`.
+
+Ouvrir http://localhost:8888 (token `JUPYTER_TOKEN`), ou l'exécuter en ligne de commande après avoir rafraîchi les résultats :
+
+```bash
+docker compose exec jupyter spark-submit /home/jovyan/work/batch/batch_job.py
+docker compose exec jupyter spark-submit /home/jovyan/work/ml/score_toots.py
+docker compose exec -w /home/jovyan/work/notebooks jupyter jupyter nbconvert --to notebook --execute --inplace visualisations.ipynb
+```
+
 ## Lancer un job Spark
 
 ```bash
