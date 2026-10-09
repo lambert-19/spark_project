@@ -131,6 +131,40 @@ Résultats du 09/10/2026 (12 079 toots, médiane de 3 exécutions, en secondes) 
 > Base créée avant l'ajout de ces tables : appliquer le schéma (idempotent, `IF NOT EXISTS`) avec
 > `docker compose exec -T postgres psql -U mastodon -d mastodon -f /dev/stdin < sql/init.sql`.
 
+## Analyse de sentiment (Spark MLlib)
+
+### Données d'entraînement : Sentiment140
+
+1,6 M tweets de 2009 étiquetés négatif (0) / positif (4), plus 498 tweets annotés à la main (dont 139 neutres). Téléchargement (~80 Mo, sans compte Kaggle) :
+
+```bash
+mkdir -p data/sentiment140
+curl -L -o data/sentiment140/trainingandtestdata.zip http://cs.stanford.edu/people/alecmgo/trainingandtestdata.zip
+unzip data/sentiment140/trainingandtestdata.zip -d data/sentiment140
+```
+
+### Entraînement
+
+[ml/train_sentiment.py](ml/train_sentiment.py) : nettoyage (`SQLTransformer`) → `RegexTokenizer` → `StopWordsRemover` (sans retirer les négations : *not*, *don't*…) → `CountVectorizer` → `IDF`, puis `LogisticRegression` et `NaiveBayes` comparés sur 20 % de test (exactitude, F1, AUC, matrice de confusion). Le meilleur (AUC) est sauvegardé dans `models/sentiment/`, nettoyage compris ; les métriques vont dans la table `sentiment_model_metrics`.
+
+```bash
+docker compose exec jupyter spark-submit /home/jovyan/work/ml/train_sentiment.py   # ~10 min
+```
+
+Sentiment140 n'a que deux classes : un toot est **neutre** si sa probabilité « positif » est à moins d'une marge de 0,5. La marge est choisie sur le jeu annoté à la main (seule source de tweets neutres).
+
+Résultats (1 280 507 tweets d'entraînement, 319 493 de test) :
+
+| Modèle | Exactitude | F1 | AUC | Jeu manuel (pos/neg) |
+|---|---|---|---|---|
+| **LogisticRegression** (retenu) | **78,6 %** | 0,786 | **0,857** | 79,7 % |
+| NaiveBayes | 76,2 % | 0,762 | 0,828 | — |
+
+Marge neutre retenue : 0,20 (neutre si 0,30 ≤ p(positif) ≤ 0,70), exactitude sur 3 classes du jeu manuel : 57,4 %.
+
+> **Mémoire** : si Docker Desktop dispose de 8 Go ou moins, l'exécuteur peut être tué (code 137) pendant l'entraînement. Mettre le streaming en pause le temps de l'entraînement (aucune perte : les toots attendent dans Kafka et le job reprend depuis son checkpoint) :
+> `docker compose stop stream-job kafka-ui`, entraînement, puis `docker compose start stream-job kafka-ui`.
+
 ## Lancer un job Spark
 
 ```bash

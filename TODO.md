@@ -55,12 +55,13 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [ ] Captures Spark UI (jobs, stages, DAG, storage) + tableau comparatif des temps
 
 ## Phase 5 — Sentiment analysis (Spark MLlib)
-- [ ] Télécharger Sentiment140 (1,6 M tweets, labels 0/4 → 0/1)
-- [ ] Pipeline : nettoyage → `Tokenizer`/`RegexTokenizer` → `StopWordsRemover` → `CountVectorizer`/`HashingTF` + `IDF`
-- [ ] Modèles : `LogisticRegression` vs `NaiveBayes`
-- [ ] Split 80/20, évaluation : accuracy, F1, AUC, matrice de confusion
+- [x] Télécharger Sentiment140 (1,6 M tweets, labels 0/4 → 0/1) — depuis Stanford, sans compte Kaggle (cf. README)
+- [x] Pipeline (`ml/train_sentiment.py`) : nettoyage (`SQLTransformer`) → `RegexTokenizer` → `StopWordsRemover` (négations conservées) → `CountVectorizer` (46 737 mots) + `IDF`
+- [x] Modèles : `LogisticRegression` (exactitude 78,6 %, AUC 0,857) vs `NaiveBayes` (76,2 %, AUC 0,828) → régression logistique retenue
+- [x] Split 80/20, évaluation : accuracy, F1, AUC, matrice de confusion → table `sentiment_model_metrics`
 - [ ] (Bonus) `CrossValidator` / `ParamGridBuilder`
-- [ ] Sauvegarde du `PipelineModel` dans `models/`
+- [x] Sauvegarde du `PipelineModel` (nettoyage compris) dans `models/sentiment/`
+- [x] Seuil neutre choisi sur le jeu annoté à la main (498 tweets dont 139 neutres) : neutre si |p(positif) − 0,5| ≤ 0,20
 - [ ] Application sur les toots historiques → positif / négatif / **neutre** (seuil de probabilité)
 - [ ] Écriture dans la table `toot_sentiment`
 

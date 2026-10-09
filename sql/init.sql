@@ -120,6 +120,30 @@ CREATE TABLE IF NOT EXISTS toot_sentiment (
     scored_at    TIMESTAMPTZ DEFAULT now()
 );
 
+-- Une ligne par classifieur et par entraînement (ml/train_sentiment.py), sur le jeu de test
+-- Sentiment140 (20 %). selected = modèle sauvegardé ; les colonnes manual_* et neutral_margin
+-- (jeu annoté à la main, avec des tweets neutres) ne concernent que celui-ci.
+CREATE TABLE IF NOT EXISTS sentiment_model_metrics (
+    run_id                  BIGSERIAL PRIMARY KEY,
+    trained_at              TIMESTAMPTZ DEFAULT now(),
+    model_name              TEXT NOT NULL,
+    selected                BOOLEAN NOT NULL,
+    model_path              TEXT,
+    train_count             BIGINT,
+    test_count              BIGINT,
+    accuracy                DOUBLE PRECISION,
+    f1                      DOUBLE PRECISION,
+    auc                     DOUBLE PRECISION,
+    tn                      BIGINT,                 -- matrice de confusion (positif = 1)
+    fp                      BIGINT,
+    fn                      BIGINT,
+    tp                      BIGINT,
+    train_s                 DOUBLE PRECISION,
+    manual_accuracy         DOUBLE PRECISION,       -- jeu manuel, positif/négatif seulement
+    neutral_margin          DOUBLE PRECISION,       -- neutre si |p(positif) - 0.5| <= marge
+    manual_3class_accuracy  DOUBLE PRECISION
+);
+
 -- ============================================================ Mesures d'optimisation (batch)
 
 -- Une ligne par exécution de batch/batch_job.py : durée de chaque étape selon le scénario
