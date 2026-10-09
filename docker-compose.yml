@@ -179,6 +179,27 @@ services:
       - postgres
       - kafka
 
+  # ---------------------------------------------------------------- Job de streaming (Partie 2)
+  # Application Spark permanente : Kafka -> nettoyage / fenêtres / agrégats -> PostgreSQL.
+  # Spark UI de ce job : http://localhost:4042
+  stream-job:
+    <<: *spark-common
+    hostname: stream-job
+    command: ["spark-submit", "/home/jovyan/work/streaming/stream_job.py"]
+    # Le healthcheck hérité de l'image vérifie le serveur Jupyter, absent ici
+    healthcheck:
+      disable: true
+    ports:
+      - "127.0.0.1:4042:4040"
+    depends_on:
+      spark-master:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
 volumes:
   kafka-data:
   pg-data:

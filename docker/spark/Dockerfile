@@ -4,7 +4,9 @@
 FROM quay.io/jupyter/pyspark-notebook:spark-4.1.2
 
 ARG SCALA_VERSION=2.13
-ARG SPARK_VERSION=4.1.2
+# Connecteur Kafka en 4.1.3 (compatible Spark 4.1.x) : la 4.1.2 plante à la reprise d'un
+# checkpoint (NullPointerException dans KafkaMicroBatchStream.metrics, corrigé en 4.1.3).
+ARG SPARK_KAFKA_VERSION=4.1.3
 ARG KAFKA_CLIENTS_VERSION=3.9.1
 ARG COMMONS_POOL2_VERSION=2.12.1
 ARG POSTGRES_JDBC_VERSION=42.7.14
@@ -15,8 +17,8 @@ USER root
 # Connecteur Kafka pour Structured Streaming + ses dépendances d'exécution,
 # et driver JDBC PostgreSQL. Ils sont intégrés à l'image pour éviter un
 # téléchargement Ivy à chaque démarrage (et pour que la démo fonctionne hors ligne).
-ADD --chmod=644 ${MAVEN}/org/apache/spark/spark-sql-kafka-0-10_${SCALA_VERSION}/${SPARK_VERSION}/spark-sql-kafka-0-10_${SCALA_VERSION}-${SPARK_VERSION}.jar ${SPARK_HOME}/jars/
-ADD --chmod=644 ${MAVEN}/org/apache/spark/spark-token-provider-kafka-0-10_${SCALA_VERSION}/${SPARK_VERSION}/spark-token-provider-kafka-0-10_${SCALA_VERSION}-${SPARK_VERSION}.jar ${SPARK_HOME}/jars/
+ADD --chmod=644 ${MAVEN}/org/apache/spark/spark-sql-kafka-0-10_${SCALA_VERSION}/${SPARK_KAFKA_VERSION}/spark-sql-kafka-0-10_${SCALA_VERSION}-${SPARK_KAFKA_VERSION}.jar ${SPARK_HOME}/jars/
+ADD --chmod=644 ${MAVEN}/org/apache/spark/spark-token-provider-kafka-0-10_${SCALA_VERSION}/${SPARK_KAFKA_VERSION}/spark-token-provider-kafka-0-10_${SCALA_VERSION}-${SPARK_KAFKA_VERSION}.jar ${SPARK_HOME}/jars/
 ADD --chmod=644 ${MAVEN}/org/apache/kafka/kafka-clients/${KAFKA_CLIENTS_VERSION}/kafka-clients-${KAFKA_CLIENTS_VERSION}.jar ${SPARK_HOME}/jars/
 ADD --chmod=644 ${MAVEN}/org/apache/commons/commons-pool2/${COMMONS_POOL2_VERSION}/commons-pool2-${COMMONS_POOL2_VERSION}.jar ${SPARK_HOME}/jars/
 ADD --chmod=644 ${MAVEN}/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar ${SPARK_HOME}/jars/

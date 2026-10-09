@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Projet** | Pipeline Big Data temps réel + batch sur les toots Mastodon |
-| **Version** | 1.0 — 09/10/2026 |
+| **Version** | 1.0 |
 | **Statut** | Brouillon à valider par l'équipe |
 
 ---
@@ -69,7 +69,7 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 ### EF1 — Ingestion (Mastodon → Kafka)
 - EF1.1 Authentification OAuth via une application Mastodon enregistrée ; secrets dans `.env` (jamais commités).
 - EF1.2 Filtrage sur une liste configurable de hashtags/mots-clés (par défaut : `#DataScience`, `#AI`, `#MachineLearning`, `#Python`, `#BigData`).
-- EF1.3 Deux modes : **streaming** (`stream_hashtag`) et **polling** de secours (`timeline_hashtag` + `since_id`), avec respect de la limite de 300 requêtes / 5 min.
+- EF1.3 Deux modes : **streaming** (WebSocket Mastodon, une connexion pour tous les hashtags, rattrapage REST après chaque reconnexion ; nécessite un access token de portée `read:statuses`) et **polling** de secours (`timeline_hashtag` + pagination `min_id`, sans token), avec respect de la limite de 300 requêtes / 5 min. Option de **backfill** au démarrage pour constituer l'historique.
 - EF1.4 Chaque message Kafka est un JSON structuré :
 
 ```json
@@ -87,12 +87,12 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 
 ### EF2 — Stream processing (Spark Structured Streaming)
 - EF2.1 Lecture du topic Kafka et parsing avec un schéma explicite.
-- EF2.2 Nettoyage : texte vide, URLs, mentions, doublons (`dropDuplicates` + watermark).
-- EF2.3 **Transformation 1** : filtre par langue et/ou mot-clé.
-- EF2.4 **Transformation 2** : fenêtres temporelles (1 min pour la démo, 1 h pour l'analyse), watermark 10 min.
+- EF2.2 Nettoyage : texte vide, URLs, mentions (la longueur d'un toot est mesurée sur le texte nettoyé), doublons (`dropDuplicatesWithinWatermark` côté Spark, `ON CONFLICT` côté PostgreSQL).
+- EF2.3 **Transformation 1** : filtre par langue (défaut : `en`) et/ou mot-clé, appliqué aux agrégats. La table brute `toots` conserve toutes les langues (source de vérité pour le batch).
+- EF2.4 **Transformation 2** : fenêtres temporelles sur `created_at` (1 min pour la démo, 1 h pour l'analyse), watermark 1 h : les toots fédérés arrivent souvent avec plusieurs dizaines de minutes de retard. Les toots plus anciens (backfill) sont exclus des agrégats temps réel mais traités par le batch.
 - EF2.5 **Action 1** : nombre de toots par fenêtre.
 - EF2.6 **Action 2** : longueur moyenne des toots par utilisateur et par hashtag.
-- EF2.7 Écriture dans PostgreSQL via `foreachBatch` (toots bruts + agrégats), avec checkpoint.
+- EF2.7 Écriture dans PostgreSQL via `foreachBatch` → table de staging JDBC → `INSERT … ON CONFLICT` (idempotent), avec checkpoint par requête.
 
 ### EF3 — Batch processing
 - EF3.1 Lecture des données historiques depuis PostgreSQL (JDBC partitionné : `partitionColumn`, `numPartitions`).
@@ -150,41 +150,7 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 4. Captures Spark UI et tableau comparatif des performances.
 5. Présentation (slides) + démo live du flux arrivant dans PostgreSQL.
 
-## 8. Arborescence cible
-
-```
-pyspark-project/
-├── docker-compose.yml
-├── .env.example
-├── README.md
-├── TODO.md
-├── CAHIER_DES_CHARGES.md
-├── producer/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── mastodon_producer.py
-├── streaming/
-│   └── stream_job.py
-├── batch/
-│   └── batch_job.py
-├── ml/
-│   ├── train_sentiment.py
-│   └── score_toots.py
-├── sql/
-│   └── init.sql
-├── notebooks/
-│   ├── 01_batch_analysis.ipynb
-│   ├── 02_optimization.ipynb
-│   ├── 03_sentiment_model.ipynb
-│   └── 04_visualizations.ipynb
-├── models/          (ignoré par Git)
-├── data/            (ignoré par Git — Sentiment140)
-└── docs/
-    ├── architecture.png
-    └── spark_ui/
-```
-
-## 9. Planning indicatif
+## 8. Planning indicatif
 
 | Semaine | Lots |
 |---|---|
@@ -195,7 +161,7 @@ pyspark-project/
 
 > Lancer la collecte **le plus tôt possible** : le volume de données historiques dépend de la durée d'ingestion.
 
-## 10. Risques et parades
+## 9. Risques et parades
 
 | Risque | Impact | Parade |
 |---|---|---|
@@ -207,7 +173,7 @@ pyspark-project/
 | RAM insuffisante (Spark + Kafka + Postgres) | Crashs | Limiter la mémoire des executors, 1 seul worker |
 | Démo live qui échoue | Soutenance pénalisée | Vidéo de secours + données pré-chargées |
 
-## 11. Points à clarifier
+## 10. Points à clarifier
 
 - **Langue de la soutenance** : l'énoncé mentionne le japonais (objectifs) **et** l'anglais (livrables) — à confirmer avec l'enseignant.
 - Valeur du seuil X pour les « utilisateurs actifs ».
