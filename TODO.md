@@ -74,12 +74,3 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] (Bonus) sentiment par hashtag, temps d'optimisation du batch, matrice de confusion du modèle
 - [x] Rédiger les insights sous chaque graphique
 
-## Phase 7 — Livrables
-- [x] `README.md` : architecture, prérequis, installation pas à pas, lancement, démo
-- [x] Commentaires dans le code (docstrings + explication des étapes clés)
-- [x] Schéma d'architecture (diagramme Mermaid dans le README, rendu par GitHub)
-- [x] `sql/init.sql` testé sur une base vide (12 tables)
-- [x] Slides de présentation en anglais, 14 slides avec notes d'orateur (architecture, choix, difficultés, résultats, démo) : https://claude.ai/artifact/DVGW1br4xjsF54iGzZfQ6m (export PPTX/PDF depuis la page)
-- [ ] Répétition de la démo live (plan B : vidéo enregistrée)
-- [x] Langue de soutenance : **anglais** (slides et présentation orale)
-- [~] Dernière vérif : procédure du README rejouée de bout en bout le 10/10 sur la machine d'Ibrahima (schéma, batch, Sentiment140, entraînement, scoring, notebook : OK ; `init.sql` OK sur base vide, 13 tables). Reste : `git clone` dans un dossier neuf → `docker compose up` après le commit final
