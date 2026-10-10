@@ -69,7 +69,7 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
 
 ### EF1 — Ingestion (Mastodon → Kafka)
 - EF1.1 Authentification OAuth via une application Mastodon enregistrée ; secrets dans `.env` (jamais commités).
-- EF1.2 Filtrage sur une liste configurable de hashtags (`MASTODON_HASHTAGS`). Objectif : **le maximum de hashtags utiles**, pour maximiser le volume de données. 80 hashtags tech/data ont été testés sur mastodon.social (09/10/2026) ; les **74** qui ont publié au moins un toot récemment sont retenus (~1 400 toots/h au total) :
+- EF1.2 Filtrage sur une liste configurable de hashtags (`MASTODON_HASHTAGS`). Objectif : **le maximum de hashtags utiles**, pour maximiser le volume de données. 80 hashtags tech/data ont été testés sur mastodon.social (09/10/2026) ; les **74** qui ont publié au moins un toot récemment sont retenus. Volume réellement collecté le 10/10 : **~280 à 300 toots distincts par heure** (contre ~15/h avec les 5 hashtags initiaux) :
   - Sécurité : `cybersecurity`, `infosec`, `security`, `privacy`
   - IA / ML : `ai`, `artificialintelligence`, `machinelearning`, `ml`, `deeplearning`, `llm`, `llms`, `genai`, `generativeai`, `chatgpt`, `openai`, `anthropic`, `claude`, `mistral`, `huggingface`, `nlp`, `computervision`, `aiethics`
   - Data : `datascience`, `data`, `bigdata`, `dataengineering`, `analytics`, `statistics`, `dataviz`, `visualization`, `database`, `sql`, `postgresql`, `postgres`, `kafka`, `pandas`, `rstats`
@@ -78,7 +78,7 @@ Construire une chaîne de traitement de bout en bout qui collecte des toots Mast
   - Tech et société : `tech`, `technology`, `google`, `apple`, `microsoft`, `startup`, `innovation`, `digital`, `internet`, `robotics`, `quantumcomputing`, `ethics`
   - Sciences : `science`, `research`, `math`, `mathematics`
 
-  Les volumes sont très inégaux : `cybersecurity` et `infosec` représentent à eux seuls ~40 % du flux, ce qui est à prendre en compte dans l'interprétation (top hashtags, sentiment).
+  Les volumes sont inégaux (mesure du 10/10, 11 h–16 h UTC) : #ai est présent dans 24 % des toots, #cybersecurity/#infosec dans 13 %, et un seul compte relais (`hackaday@www.urbanmind.net`) publie 12 % des toots, toujours avec les mêmes hashtags. À prendre en compte dans l'interprétation (top hashtags, sentiment).
 - EF1.3 Deux modes : **streaming** (WebSocket Mastodon, une connexion pour tous les hashtags, rattrapage REST après chaque reconnexion ; nécessite un access token de portée `read:statuses`) et **polling** de secours (`timeline_hashtag` + pagination `min_id`, sans token), avec respect de la limite de 300 requêtes / 5 min. Option de **backfill** au démarrage pour constituer l'historique.
 - EF1.4 Chaque message Kafka est un JSON structuré :
 

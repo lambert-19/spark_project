@@ -164,7 +164,7 @@ L'option `--scenario` active les optimisations une par une, pour mesurer leur ef
 batch/benchmark.sh 3    # chaque scénario 3 fois, sur les mêmes données ; médianes affichées à la fin
 ```
 
-Chaque exécution ajoute une ligne (durée de chaque étape, `app_id`) dans la table `batch_benchmarks` et apparaît dans le Spark History Server (http://localhost:18080), sous le nom `mastodon-batch-job [scénario]`.
+Chaque exécution ajoute une ligne (durée de chaque étape, `app_id`) dans la table `batch_benchmarks` et apparaît dans le Spark History Server (http://localhost:18080), sous le nom `mastodon-batch-job [scénario]`. Captures commentées du Spark UI (jobs, stages, plans SQL `baseline` vs `optimized`) : [docs/spark_ui/](docs/spark_ui/README.md).
 
 Résultats du 09/10/2026 (12 079 toots, médiane de 3 exécutions, en secondes) :
 
@@ -178,6 +178,7 @@ Résultats du 09/10/2026 (12 079 toots, médiane de 3 exécutions, en secondes) 
 - **cache** : la lecture coûte plus cher (matérialisation du cache), mais les 4 sorties ne relisent plus PostgreSQL : temps de calcul divisé par 2.
 - **repartition** : 4 partitions de shuffle au lieu de 200 et jointures sans redistribution ; gain surtout sur les petites sorties (hashtag_daily, daily_stats).
 - Le volume est petit : une part importante du temps est un coût fixe (démarrage des tâches, connexions JDBC, première exécution de `active_users`), ce qui limite le gain total à environ 28 %.
+- Mesures du 10/10/2026 sur une autre machine (15 537 toots, streaming à l'arrêt, médiane de 3) : `baseline` 38,6 s, `cache` 34,1 s (calculs 35,5 → 22,7 s), `repartition` 36,7 s, `optimized` 41,4 s. Seul l'effet du cache sur le temps de calcul est net ; sur le total, les écarts restent dans la variabilité de la machine (35 à 53 s pour un même scénario).
 
 > Base créée avant l'ajout de ces tables : appliquer le schéma (idempotent, `IF NOT EXISTS`) avec
 > `docker compose exec -T postgres psql -U mastodon -d mastodon -f /dev/stdin < sql/init.sql`.
@@ -208,10 +209,30 @@ Résultats (1 280 507 tweets d'entraînement, 319 493 de test) :
 
 | Modèle | Exactitude | F1 | AUC | Jeu manuel (pos/neg) |
 |---|---|---|---|---|
-| **LogisticRegression** (retenu) | **78,6 %** | 0,786 | **0,857** | 79,7 % |
+| **LogisticRegression** (retenu, `regParam=0.001`, `elasticNetParam=0.5`) | **78,9 %** | 0,789 | **0,863** | 82,5 % |
+| LogisticRegression (paramètres initiaux, `regParam=0.01`, L2) | 78,6 % | 0,786 | 0,857 | 79,7 % |
 | NaiveBayes | 76,2 % | 0,762 | 0,828 | — |
 
-Marge neutre retenue : 0,20 (neutre si 0,30 ≤ p(positif) ≤ 0,70), exactitude sur 3 classes du jeu manuel : 57,4 %.
+Marge neutre retenue : 0,20 (neutre si 0,30 ≤ p(positif) ≤ 0,70), exactitude sur 3 classes du jeu manuel : 62,5 % (57,4 % avec les paramètres initiaux).
+
+### Réglage des hyperparamètres (validation croisée)
+
+[ml/tune_sentiment.py](ml/tune_sentiment.py) compare 6 combinaisons (`regParam` ∈ {0.001, 0.01, 0.1} × `elasticNetParam` ∈ {0 (L2), 0.5 (L1+L2)}) par `CrossValidator` (3 plis, AUC) sur un échantillon de 10 % de Sentiment140 (18 entraînements en ~80 s) ; résultats dans la table `sentiment_cv_results`.
+
+```bash
+docker compose exec jupyter spark-submit /home/jovyan/work/ml/tune_sentiment.py   # ~2,5 min
+```
+
+| regParam | elasticNetParam | AUC moyenne (3 plis) |
+|---|---|---|
+| **0.001** | **0.5** | **0,830** ← meilleur |
+| 0.01 | 0.5 | 0,825 |
+| 0.1 | 0 | 0,824 |
+| 0.01 | 0 | 0,811 (paramètres initiaux) |
+| 0.001 | 0 | 0,800 |
+| 0.1 | 0.5 | 0,570 (trop régularisé : la plupart des poids à 0) |
+
+Réentraînée sur les 1,28 M tweets avec ces paramètres, la régression logistique gagne 0,6 point d'AUC et 5 points sur le jeu manuel à 3 classes : ce sont désormais les valeurs par défaut de `train_sentiment.py` (modifiables par `SENTIMENT_LR_REG_PARAM` et `SENTIMENT_LR_ELASTIC_NET`). Effet secondaire : les probabilités sont moins tranchées, donc davantage de toots tombent dans la zone neutre (43 % au lieu de 25 % au 10/10).
 
 ### Application aux toots
 

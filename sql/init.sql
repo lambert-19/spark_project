@@ -144,6 +144,22 @@ CREATE TABLE IF NOT EXISTS sentiment_model_metrics (
     manual_3class_accuracy  DOUBLE PRECISION
 );
 
+-- Validation croisée de la régression logistique (ml/tune_sentiment.py, bonus) : une ligne par
+-- combinaison d'hyperparamètres ; test_* (jeu de test tenu à l'écart) pour la meilleure seulement.
+CREATE TABLE IF NOT EXISTS sentiment_cv_results (
+    run_id             BIGSERIAL PRIMARY KEY,
+    run_at             TIMESTAMPTZ DEFAULT now(),
+    reg_param          DOUBLE PRECISION NOT NULL,
+    elastic_net_param  DOUBLE PRECISION NOT NULL,
+    folds              INTEGER NOT NULL,
+    cv_auc_mean        DOUBLE PRECISION,
+    cv_auc_std         DOUBLE PRECISION,
+    best               BOOLEAN NOT NULL,
+    sample_fraction    DOUBLE PRECISION,
+    test_accuracy      DOUBLE PRECISION,
+    test_auc           DOUBLE PRECISION
+);
+
 -- ============================================================ Mesures d'optimisation (batch)
 
 -- Une ligne par exécution de batch/batch_job.py : durée de chaque étape selon le scénario

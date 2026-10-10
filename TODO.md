@@ -23,7 +23,7 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 
 ## Phase 2 — Ingestion (Mastodon → Kafka)
 - [x] `producer/mastodon_producer.py` avec `requests` + `websockets` + `kafka-python` (+ `toot_parser.py`, image Docker `producer`). Mastodon.py abandonné : streaming SSE coupé par mastodon.social, et conversion typée des réponses trop lente (~20 s par page de 40 toots)
-- [x] Liste de hashtags élargie : 74 hashtags tech/data (~1 400 toots/h), cf. CDC EF1.2
+- [x] Liste de hashtags élargie : 74 hashtags tech/data (~280–300 toots distincts/h, contre ~15/h avant), cf. CDC EF1.2
 - [x] Mode streaming : WebSocket Mastodon (une connexion, tous les hashtags) + rattrapage REST à chaque reconnexion. `stream_hashtag()` de Mastodon.py abandonné : mastodon.social coupe le streaming HTTP (SSE) toutes les ~16 s
 - [ ] Régénérer l'access token Mastodon (il a circulé en clair)
 - [x] Mode secours : polling `timeline_hashtag()` avec `min_id` (aucun toot perdu) + backfill historique ; limite 300 req / 5 min gérée par `ratelimit_method="pace"`
@@ -44,7 +44,7 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Démo : `sql/demo.sql` (avec `\watch 5` dans psql)
 
 ## Phase 4 — Batch processing (PostgreSQL → Spark)
-- [ ] Laisser tourner l'ingestion plusieurs jours (objectif ≥ 10 000 toots)
+- [x] Laisser tourner l'ingestion (objectif ≥ 10 000 toots) : 15 500 toots le 10/10 ; flux en direct de ~280–300 toots/h avec les 74 hashtags
 - [ ] (Optionnel) Compléter avec un dataset Kaggle Twitter
 - [x] `batch/batch_job.py` : lecture JDBC partitionnée (4 partitions sur un hash de `toot_id`, colonnes utiles uniquement)
 - [x] Filtre utilisateurs actifs (> `BATCH_ACTIVE_THRESHOLD` toots, défaut 5) → `batch_active_users` (+ hashtag favori)
@@ -52,14 +52,14 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Toots par jour, longueur moyenne, engagement moyen (favs + reblogs), hashtag du jour → `batch_daily_stats`
 - [x] Constat : un compte relais (`hackaday@www.urbanmind.net`) publie ~15 % des toots avec toujours les mêmes hashtags (#engineering, #community, #inclusive…) → à signaler dans l'analyse
 - [x] Optimisation : mesures **avant/après** `repartition`, `coalesce`, `cache`/`persist` (`--scenario`, `batch/benchmark.sh`, table `batch_benchmarks`) : 29,0 s → 20,8 s (calculs 27,0 s → 13,4 s), cf. README
-- [ ] Captures Spark UI (jobs, stages, DAG, storage) + tableau comparatif des temps
+- [x] Captures Spark UI (jobs, stages, plans SQL) + tableau comparatif → `docs/spark_ui/` (shuffle 14,0 → 7,6 Mo, `SortMergeJoin` → `BroadcastHashJoin`, lecture depuis le cache). Onglet Storage vide dans le History Server (cache libéré avant la fin) : expliqué
 
 ## Phase 5 — Sentiment analysis (Spark MLlib)
 - [x] Télécharger Sentiment140 (1,6 M tweets, labels 0/4 → 0/1) — depuis Stanford, sans compte Kaggle (cf. README)
 - [x] Pipeline (`ml/train_sentiment.py`) : nettoyage (`SQLTransformer`) → `RegexTokenizer` → `StopWordsRemover` (négations conservées) → `CountVectorizer` (46 737 mots) + `IDF`
 - [x] Modèles : `LogisticRegression` (exactitude 78,6 %, AUC 0,857) vs `NaiveBayes` (76,2 %, AUC 0,828) → régression logistique retenue
 - [x] Split 80/20, évaluation : accuracy, F1, AUC, matrice de confusion → table `sentiment_model_metrics`
-- [ ] (Bonus) `CrossValidator` / `ParamGridBuilder`
+- [x] (Bonus) `CrossValidator` / `ParamGridBuilder` (`ml/tune_sentiment.py`, 3 plis, 6 combinaisons) : `regParam=0.001`, `elasticNetParam=0.5` retenus → AUC 0,857 → 0,863, jeu manuel 3 classes 57,4 % → 62,5 %
 - [x] Sauvegarde du `PipelineModel` (nettoyage compris) dans `models/sentiment/`
 - [x] Seuil neutre choisi sur le jeu annoté à la main (498 tweets dont 139 neutres) : neutre si |p(positif) − 0,5| ≤ 0,20
 - [x] Application sur les toots historiques en anglais (`ml/score_toots.py`) → positif / négatif / **neutre** (seuil de probabilité)
@@ -80,7 +80,7 @@ Voir le [cahier des charges](CAHIER_DES_CHARGES.md) pour le détail de chaque ex
 - [x] Commentaires dans le code (docstrings + explication des étapes clés)
 - [x] Schéma d'architecture (diagramme Mermaid dans le README, rendu par GitHub)
 - [x] `sql/init.sql` testé sur une base vide (12 tables)
-- [ ] Slides de présentation (architecture, choix, difficultés, résultats, démo)
+- [x] Slides de présentation en anglais, 14 slides avec notes d'orateur (architecture, choix, difficultés, résultats, démo) : https://claude.ai/artifact/DVGW1br4xjsF54iGzZfQ6m (export PPTX/PDF depuis la page)
 - [ ] Répétition de la démo live (plan B : vidéo enregistrée)
 - [x] Langue de soutenance : **anglais** (slides et présentation orale)
-- [ ] Dernière vérif : clone propre → `docker compose up` → tout fonctionne
+- [~] Dernière vérif : procédure du README rejouée de bout en bout le 10/10 sur la machine d'Ibrahima (schéma, batch, Sentiment140, entraînement, scoring, notebook : OK ; `init.sql` OK sur base vide, 13 tables). Reste : `git clone` dans un dossier neuf → `docker compose up` après le commit final

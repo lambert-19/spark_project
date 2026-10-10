@@ -60,6 +60,9 @@ DATA_DIR = os.environ.get("SENTIMENT_DATA_DIR", f"{WORK_DIR}/data/sentiment140")
 MODEL_DIR = os.environ.get("SENTIMENT_MODEL_DIR", f"{WORK_DIR}/models/sentiment")
 TRAIN_FRACTION = float(os.environ.get("SENTIMENT_TRAIN_FRACTION", "1.0"))  # < 1 pour un essai rapide
 VOCAB_SIZE = int(os.environ.get("SENTIMENT_VOCAB_SIZE", "50000"))
+# Régularisation de la régression logistique (cf. ml/tune_sentiment.py pour le réglage par validation croisée)
+LR_REG_PARAM = float(os.environ.get("SENTIMENT_LR_REG_PARAM", "0.001"))
+LR_ELASTIC_NET = float(os.environ.get("SENTIMENT_LR_ELASTIC_NET", "0.5"))  # 0 = L2, 1 = L1
 SEED = 42
 NEUTRAL_MARGINS = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3]
 
@@ -190,7 +193,8 @@ def main():
              n_train, n_test, len(features.stages[3].vocabulary), time.perf_counter() - start)
 
     classifiers = {
-        "logistic_regression": LogisticRegression(maxIter=30, regParam=0.01),
+        "logistic_regression": LogisticRegression(maxIter=30, regParam=LR_REG_PARAM,
+                                                  elasticNetParam=LR_ELASTIC_NET),
         "naive_bayes": NaiveBayes(modelType="multinomial", smoothing=1.0),
     }
     results = {}
